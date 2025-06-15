@@ -1,33 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Button, Alert } from 'react-bootstrap';
-import Swal from 'sweetalert2';
+import { Modal, Button, Form } from 'react-bootstrap';
 
-const ProductoModal = ({ show, onHide, producto, onSubmit }) => {
+const ProductoModal = ({ show, onHide, producto, onSubmit, validations }) => {
   const [formData, setFormData] = useState({
     nombre: '',
     descripcion: '',
     vencimiento: '',
-    cantidad: 1,
-    precio: 0
+    cantidad: 0,
+    precio: 0,
+    estado: 'disponible'
   });
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
     if (producto) {
       setFormData({
-        nombre: producto.nombre,
-        descripcion: producto.descripcion,
-        vencimiento: producto.vencimiento,
-        cantidad: producto.cantidad,
-        precio: producto.precio
+        nombre: producto.nombre || '',
+        descripcion: producto.descripcion || '',
+        vencimiento: producto.vencimiento || '',
+        cantidad: producto.cantidad || 0,
+        precio: producto.precio || 0,
+        estado: producto.estado || 'disponible'
       });
     } else {
       setFormData({
         nombre: '',
         descripcion: '',
         vencimiento: '',
-        cantidad: 1,
-        precio: 0
+        cantidad: 0,
+        precio: 0,
+        estado: 'disponible'
       });
     }
     setErrors({});
@@ -35,75 +37,70 @@ const ProductoModal = ({ show, onHide, producto, onSubmit }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
     
     // Validación en tiempo real
-    if (name === 'cantidad' && parseInt(value) <= 0) {
-      setErrors(prev => ({...prev, cantidad: 'La cantidad debe ser mayor a 0'}));
-    } else if (name === 'precio' && parseFloat(value) < 0) {
-      setErrors(prev => ({...prev, precio: 'El precio no puede ser negativo'}));
-    } else if (name === 'vencimiento') {
-      const hoy = new Date();
-      const fechaVenc = new Date(value);
-      if (fechaVenc < hoy) {
-        setErrors(prev => ({...prev, vencimiento: 'La fecha no puede ser pasada'}));
-      } else {
-        setErrors(prev => ({...prev, vencimiento: ''}));
+    let error = '';
+    if (name === 'nombre') {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        error = "Nombre es requerido";
+      } else if (trimmed.length < validations.nombre.minLength || 
+                 trimmed.length > validations.nombre.maxLength) {
+        error = validations.nombre.message;
       }
-    } else {
-      setErrors(prev => ({...prev, [name]: ''}));
+    } else if (name === 'descripcion') {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        error = "Descripción es requerida";
+      } else if (trimmed.length < validations.descripcion.minLength || 
+                 trimmed.length > validations.descripcion.maxLength) {
+        error = validations.descripcion.message;
+      }
+    } else if (name === 'cantidad') {
+      const numValue = Number(value);
+      if (isNaN(numValue) || 
+          numValue < validations.cantidad.min || 
+          numValue > validations.cantidad.max) {
+        error = validations.cantidad.message;
+      }
+    } else if (name === 'precio') {
+      const numValue = Number(value);
+      if (isNaN(numValue) || 
+          numValue < validations.precio.min || 
+          numValue > validations.precio.max) {
+        error = validations.precio.message;
+      }
+    } else if (name === 'vencimiento' && value) {
+      const hoy = new Date();
+      const vencimiento = new Date(value);
+      if (vencimiento < hoy) {
+        error = "La fecha no puede ser anterior a hoy";
+      }
     }
-  };
 
-  const validateForm = () => {
-    const newErrors = {};
-    const hoy = new Date();
-    const fechaVenc = new Date(formData.vencimiento);
+    setErrors({
+      ...errors,
+      [name]: error
+    });
 
-    if (!formData.nombre.trim()) newErrors.nombre = 'Nombre es requerido';
-    if (!formData.descripcion.trim()) newErrors.descripcion = 'Descripción es requerida';
-    if (!formData.vencimiento) newErrors.vencimiento = 'Fecha de vencimiento es requerida';
-    if (fechaVenc < hoy) newErrors.vencimiento = 'La fecha no puede ser pasada';
-    if (formData.cantidad <= 0) newErrors.cantidad = 'La cantidad debe ser mayor a 0';
-    if (formData.precio < 0) newErrors.precio = 'El precio no puede ser negativo';
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setFormData({
+      ...formData,
+      [name]: value
+    });
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!validateForm()) return;
-
-    const productoData = {
-      ...formData,
-      cantidad: parseInt(formData.cantidad),
-      precio: parseFloat(formData.precio),
-      vencimiento: formData.vencimiento
-    };
-
-    onSubmit(productoData);
+    onSubmit(formData);
   };
 
-  const today = new Date().toISOString().split('T')[0];
-  const isGratuito = parseFloat(formData.precio) === 0;
-
   return (
-    <Modal show={show} onHide={onHide} centered size="lg">
+    <Modal show={show} onHide={onHide} size="lg">
       <Modal.Header closeButton>
         <Modal.Title>{producto ? 'Editar Producto' : 'Agregar Producto'}</Modal.Title>
       </Modal.Header>
       <Form onSubmit={handleSubmit}>
         <Modal.Body>
-          {isGratuito && (
-            <Alert variant="info">
-              Este producto será marcado como GRATUITO
-            </Alert>
-          )}
-
           <Form.Group className="mb-3">
             <Form.Label>Nombre *</Form.Label>
             <Form.Control
@@ -112,10 +109,14 @@ const ProductoModal = ({ show, onHide, producto, onSubmit }) => {
               value={formData.nombre}
               onChange={handleChange}
               isInvalid={!!errors.nombre}
+              maxLength={validations.nombre.maxLength}
             />
             <Form.Control.Feedback type="invalid">
               {errors.nombre}
             </Form.Control.Feedback>
+            <Form.Text className="text-muted">
+              {formData.nombre.trim().length}/{validations.nombre.maxLength} caracteres
+            </Form.Text>
           </Form.Group>
 
           <Form.Group className="mb-3">
@@ -127,19 +128,22 @@ const ProductoModal = ({ show, onHide, producto, onSubmit }) => {
               value={formData.descripcion}
               onChange={handleChange}
               isInvalid={!!errors.descripcion}
+              maxLength={validations.descripcion.maxLength}
             />
             <Form.Control.Feedback type="invalid">
               {errors.descripcion}
             </Form.Control.Feedback>
+            <Form.Text className="text-muted">
+              {formData.descripcion.trim().length}/{validations.descripcion.maxLength} caracteres
+            </Form.Text>
           </Form.Group>
 
           <div className="row">
-            <Form.Group className="mb-3 col-md-6">
-              <Form.Label>Fecha de Vencimiento *</Form.Label>
+            <Form.Group className="col-md-6 mb-3">
+              <Form.Label>Fecha de Vencimiento</Form.Label>
               <Form.Control
                 type="date"
                 name="vencimiento"
-                min={today}
                 value={formData.vencimiento}
                 onChange={handleChange}
                 isInvalid={!!errors.vencimiento}
@@ -149,31 +153,33 @@ const ProductoModal = ({ show, onHide, producto, onSubmit }) => {
               </Form.Control.Feedback>
             </Form.Group>
 
-            <Form.Group className="mb-3 col-md-3">
+            <Form.Group className="col-md-6 mb-3">
               <Form.Label>Cantidad *</Form.Label>
               <Form.Control
                 type="number"
-                min="1"
                 name="cantidad"
                 value={formData.cantidad}
                 onChange={handleChange}
                 isInvalid={!!errors.cantidad}
+                min={validations.cantidad.min}
+                max={validations.cantidad.max}
               />
               <Form.Control.Feedback type="invalid">
                 {errors.cantidad}
               </Form.Control.Feedback>
             </Form.Group>
 
-            <Form.Group className="mb-3 col-md-3">
+            <Form.Group className="col-md-6 mb-3">
               <Form.Label>Precio ($) *</Form.Label>
               <Form.Control
                 type="number"
-                min="0"
-                step="0.01"
                 name="precio"
                 value={formData.precio}
                 onChange={handleChange}
                 isInvalid={!!errors.precio}
+                min={validations.precio.min}
+                max={validations.precio.max}
+                step="0.01"
               />
               <Form.Control.Feedback type="invalid">
                 {errors.precio}
@@ -185,7 +191,11 @@ const ProductoModal = ({ show, onHide, producto, onSubmit }) => {
           <Button variant="secondary" onClick={onHide}>
             Cancelar
           </Button>
-          <Button variant="primary" type="submit">
+          <Button 
+            variant="primary" 
+            type="submit"
+            disabled={Object.keys(errors).some(key => errors[key])}
+          >
             {producto ? 'Guardar Cambios' : 'Agregar Producto'}
           </Button>
         </Modal.Footer>

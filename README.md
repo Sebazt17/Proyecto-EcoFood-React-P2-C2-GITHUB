@@ -9,8 +9,8 @@ Aplicación de gestión de alimentos con roles: Admin, Empresa y Cliente
 - **Contraseña:** yapsuv123  
 
 ### Empresa  
-- **Email:** xovex79287@pngzero.com  
-- **Contraseña:** xovex123  
+- **Email:** watota5012@nab4.com  
+- **Contraseña:** watota123  
 
 ### Cliente  
 - **Email:** wxh3d@punkproof.com  

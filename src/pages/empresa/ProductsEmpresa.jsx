@@ -17,6 +17,36 @@ const ProductsEmpresa = () => {
   const [currentProducto, setCurrentProducto] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
   const [filter, setFilter] = useState('todos');
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [sortConfig, setSortConfig] = useState({
+    key: 'nombre',
+    direction: 'asc'
+  });
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Validaciones
+  const validations = {
+    nombre: {
+      minLength: 3,
+      maxLength: 50,
+      message: "Nombre debe tener entre 3 y 50 caracteres"
+    },
+    descripcion: {
+      minLength: 10,
+      maxLength: 500,
+      message: "Descripción debe tener entre 10 y 500 caracteres"
+    },
+    cantidad: {
+      min: 0,
+      max: 9999,
+      message: "Cantidad debe ser entre 0 y 9999"
+    },
+    precio: {
+      min: 0,
+      max: 9999999,
+      message: "Precio debe ser entre $0 y $9,999,999"
+    }
+  };
 
   useEffect(() => {
     if (!userData) {
@@ -34,7 +64,6 @@ const ProductsEmpresa = () => {
           throw new Error("Formato de datos inválido");
         }
 
-        // Asegurar que los productos tengan los campos necesarios
         const productosValidados = productosData.map(producto => ({
           id: producto.id || '',
           nombre: producto.nombre || '',
@@ -42,7 +71,7 @@ const ProductsEmpresa = () => {
           vencimiento: producto.vencimiento || '',
           cantidad: producto.cantidad || 0,
           precio: producto.precio || 0,
-          estado: producto.estado || 'disponible',
+          estado: determinarEstado(producto.vencimiento, producto.precio, producto.cantidad),
           empresaId: producto.empresaId || userData.uid
         }));
 
@@ -60,9 +89,9 @@ const ProductsEmpresa = () => {
   }, [userData, navigate]);
 
   const determinarEstado = (vencimiento, precio, cantidad) => {
-    if (!vencimiento) return "disponible";
     if (cantidad <= 0) return "agotado";
     if (precio === 0) return "gratuito";
+    if (!vencimiento) return "disponible";
     
     try {
       const hoy = new Date();
@@ -79,23 +108,102 @@ const ProductsEmpresa = () => {
     }
   };
 
-  const filteredProductos = productos.filter(producto => {
+  // Función de ordenamiento
+  const sortedProductos = [...productos].sort((a, b) => {
+    if (a[sortConfig.key] < b[sortConfig.key]) {
+      return sortConfig.direction === 'asc' ? -1 : 1;
+    }
+    if (a[sortConfig.key] > b[sortConfig.key]) {
+      return sortConfig.direction === 'asc' ? 1 : -1;
+    }
+    return 0;
+  });
+
+  const handleSort = (key) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const filteredProductos = sortedProductos.filter(producto => {
     if (filter === 'todos') return true;
     if (filter === 'gratuitos') return producto.precio === 0;
     if (filter === 'porVencer') {
-      const estado = determinarEstado(producto.vencimiento, producto.precio, producto.cantidad);
-      return estado === 'porVencer' || estado === 'vencido';
+      return producto.estado === 'porVencer' || producto.estado === 'vencido';
     }
     return producto.estado === filter;
   });
 
-  const handleCreateOrUpdate = async (productoData, isUpdate) => {
-    try {
-      // Validación básica
-      if (!productoData.nombre || !productoData.descripcion) {
-        throw new Error("Nombre y descripción son requeridos");
-      }
+  // Paginación
+  const totalPages = Math.ceil(filteredProductos.length / itemsPerPage);
+  const paginatedProductos = filteredProductos.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
+  const validateProducto = (productoData) => {
+    const errors = {};
+    
+    // Validar nombre
+    const nombreTrimmed = productoData.nombre.trim();
+    if (!nombreTrimmed) {
+      errors.nombre = "Nombre es requerido";
+    } else if (nombreTrimmed.length < validations.nombre.minLength || 
+               nombreTrimmed.length > validations.nombre.maxLength) {
+      errors.nombre = validations.nombre.message;
+    }
+
+    // Validar descripción
+    const descripcionTrimmed = productoData.descripcion.trim();
+    if (!descripcionTrimmed) {
+      errors.descripcion = "Descripción es requerida";
+    } else if (descripcionTrimmed.length < validations.descripcion.minLength || 
+               descripcionTrimmed.length > validations.descripcion.maxLength) {
+      errors.descripcion = validations.descripcion.message;
+    }
+
+    // Validar cantidad
+    if (isNaN(productoData.cantidad) || 
+        productoData.cantidad < validations.cantidad.min || 
+        productoData.cantidad > validations.cantidad.max) {
+      errors.cantidad = validations.cantidad.message;
+    }
+
+    // Validar precio
+    if (isNaN(productoData.precio) || 
+        productoData.precio < validations.precio.min || 
+        productoData.precio > validations.precio.max) {
+      errors.precio = validations.precio.message;
+    }
+
+    // Validar fecha de vencimiento
+    if (productoData.vencimiento) {
+      const hoy = new Date();
+      const vencimiento = new Date(productoData.vencimiento);
+      if (vencimiento < hoy) {
+        errors.vencimiento = "La fecha no puede ser anterior a hoy";
+      }
+    }
+
+    return errors;
+  };
+
+  const handleCreateOrUpdate = async (productoData, isUpdate) => {
+    const validationErrors = validateProducto(productoData);
+    
+    if (Object.keys(validationErrors).length > 0) {
+      Swal.fire({
+        title: 'Errores en el formulario',
+        html: Object.entries(validationErrors)
+          .map(([field, error]) => `<b>${field}:</b> ${error}`)
+          .join('<br>'),
+        icon: 'error'
+      });
+      return;
+    }
+
+    try {
       const estado = determinarEstado(
         productoData.vencimiento, 
         productoData.precio,
@@ -103,11 +211,13 @@ const ProductsEmpresa = () => {
       );
       
       const productoCompleto = {
-        ...productoData,
-        empresaId: userData.uid,
-        estado,
+        nombre: productoData.nombre.trim(),
+        descripcion: productoData.descripcion.trim(),
+        vencimiento: productoData.vencimiento,
         cantidad: Number(productoData.cantidad),
         precio: Number(productoData.precio),
+        estado,
+        empresaId: userData.uid,
         [isUpdate ? 'updatedAt' : 'createdAt']: new Date().toISOString()
       };
 
@@ -124,7 +234,7 @@ const ProductsEmpresa = () => {
         result = "creado";
       }
 
-      // Mostrar advertencia si el producto vence en 3 días o menos
+      // Mostrar advertencia si el producto vence pronto
       if (productoData.vencimiento) {
         try {
           const vencimiento = new Date(productoData.vencimiento);
@@ -198,18 +308,34 @@ const ProductsEmpresa = () => {
             {showProfile ? 'Ver Productos' : 'Ver Perfil'}
           </button>
           {!showProfile && (
-            <select 
-              className="form-select"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              style={{width: '200px'}}
-            >
-              <option value="todos">Todos los productos</option>
-              <option value="disponible">Disponibles</option>
-              <option value="gratuitos">Gratuitos</option>
-              <option value="porVencer">Por vencer/Vencidos</option>
-              <option value="agotado">Agotados</option>
-            </select>
+            <div className="d-flex">
+              <select 
+                className="form-select me-2"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                style={{width: '200px'}}
+              >
+                <option value="todos">Todos los productos</option>
+                <option value="disponible">Disponibles</option>
+                <option value="gratuitos">Gratuitos</option>
+                <option value="porVencer">Por vencer/Vencidos</option>
+                <option value="agotado">Agotados</option>
+              </select>
+              
+              <select 
+                className="form-select me-2"
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                style={{width: '100px'}}
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+              </select>
+            </div>
           )}
         </div>
         
@@ -230,32 +356,126 @@ const ProductsEmpresa = () => {
         <PerfilEmpresa empresaId={userData.uid} />
       ) : (
         <>
-          <div className="row">
-            {filteredProductos.length > 0 ? (
-              filteredProductos.map(producto => (
-                <div className="col-md-4 mb-4" key={producto.id}>
-                  <ProductoCard 
-                    producto={producto}
-                    onEdit={() => {
-                      setCurrentProducto(producto);
-                      setShowModal(true);
-                    }}
-                    onDelete={() => handleDelete(producto.id)}
-                  />
-                </div>
-              ))
-            ) : (
-              <div className="col-12">
-                <div className="alert alert-info">No hay productos que coincidan con el filtro</div>
-              </div>
-            )}
+          <div className="table-responsive mb-3">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th onClick={() => handleSort('nombre')} style={{cursor: 'pointer'}}>
+                    Nombre {sortConfig.key === 'nombre' && (
+                      <i className={`fas fa-arrow-${sortConfig.direction === 'asc' ? 'up' : 'down'}`} />
+                    )}
+                  </th>
+                  <th>Descripción</th>
+                  <th onClick={() => handleSort('precio')} style={{cursor: 'pointer'}}>
+                    Precio {sortConfig.key === 'precio' && (
+                      <i className={`fas fa-arrow-${sortConfig.direction === 'asc' ? 'up' : 'down'}`} />
+                    )}
+                  </th>
+                  <th>Cantidad</th>
+                  <th>Vencimiento</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedProductos.length > 0 ? (
+                  paginatedProductos.map(producto => (
+                    <tr 
+                      key={producto.id} 
+                      className={producto.estado === 'vencido' ? 'table-danger' : 
+                                producto.estado === 'porVencer' ? 'table-warning' : ''}
+                    >
+                      <td>{producto.nombre}</td>
+                      <td>{producto.descripcion}</td>
+                      <td>${producto.precio.toLocaleString()}</td>
+                      <td>{producto.cantidad}</td>
+                      <td>{producto.vencimiento || 'N/A'}</td>
+                      <td>
+                        <span className={`badge ${
+                          producto.estado === 'disponible' ? 'bg-success' :
+                          producto.estado === 'gratuito' ? 'bg-info' :
+                          producto.estado === 'porVencer' ? 'bg-warning' :
+                          producto.estado === 'vencido' ? 'bg-danger' : 'bg-secondary'
+                        }`}>
+                          {producto.estado === 'porVencer' ? 'Por vencer' : 
+                           producto.estado === 'vencido' ? 'Vencido' : 
+                           producto.estado}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-sm btn-warning me-2"
+                          onClick={() => {
+                            setCurrentProducto(producto);
+                            setShowModal(true);
+                          }}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          className="btn btn-sm btn-danger"
+                          onClick={() => handleDelete(producto.id)}
+                        >
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="7" className="text-center">
+                      <div className="alert alert-info">No hay productos que coincidan con el filtro</div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
+
+          {totalPages > 1 && (
+            <nav>
+              <ul className="pagination justify-content-center">
+                <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
+                  <button 
+                    className="page-link" 
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  >
+                    Anterior
+                  </button>
+                </li>
+                
+                {Array.from({length: totalPages}, (_, i) => i + 1).map(page => (
+                  <li 
+                    key={page} 
+                    className={`page-item ${currentPage === page ? 'active' : ''}`}
+                  >
+                    <button 
+                      className="page-link" 
+                      onClick={() => setCurrentPage(page)}
+                    >
+                      {page}
+                    </button>
+                  </li>
+                ))}
+                
+                <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
+                  <button 
+                    className="page-link" 
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  >
+                    Siguiente
+                  </button>
+                </li>
+              </ul>
+            </nav>
+          )}
 
           <ProductoModal 
             show={showModal}
             onHide={() => setShowModal(false)}
             producto={currentProducto}
             onSubmit={(data) => handleCreateOrUpdate(data, !!currentProducto)}
+            validations={validations}
           />
         </>
       )}
