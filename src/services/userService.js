@@ -240,10 +240,22 @@ export const registerEmpresaWithAuth = async (email, password, empresaData) => {
 
 export const addEmpresa = async (empresaData) => {
   try {
+    // Validaciones (puedes usar las mismas que en updateEmpresa)
+    if (!empresaData.nombre?.trim()) {
+      throw new Error('El nombre no puede estar vacío');
+    }
+
+    if (!/^[0-9]{7,8}-[0-9kK]{1}$/.test(empresaData.rut)) {
+      throw new Error('RUT inválido. Formato: 12345678-5');
+    }
+
     const docRef = await addDoc(collection(db, "empresas"), {
       ...empresaData,
-      tipo: USER_TYPES.EMPRESA
+      tipo: USER_TYPES.EMPRESA,
+      fechaRegistro: new Date().toISOString(),
+      estado: 'activa' // Campo adicional para control
     });
+    
     return { id: docRef.id, ...empresaData };
   } catch (error) {
     console.error("Error adding company:", error);
@@ -253,7 +265,25 @@ export const addEmpresa = async (empresaData) => {
 
 export const updateEmpresa = async (id, empresaData) => {
   try {
-    await updateDoc(doc(db, "empresas", id), empresaData);
+    // Validación de campos requeridos
+    if (!empresaData.nombre || !empresaData.rut || !empresaData.email) {
+      throw new Error('Nombre, RUT y email son campos requeridos');
+    }
+
+    // Validación de formato de email
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(empresaData.email)) {
+      throw new Error('El formato del email no es válido');
+    }
+
+    // Validación de RUT chileno (opcional)
+    if (!/^[0-9]{7,8}-[0-9kK]{1}$/.test(empresaData.rut)) {
+      throw new Error('El formato del RUT no es válido (ej: 12345678-5)');
+    }
+
+    await updateDoc(doc(db, "empresas", id), {
+      ...empresaData,
+      fechaActualizacion: new Date().toISOString()
+    });
     return true;
   } catch (error) {
     console.error("Error updating company:", error);
@@ -263,11 +293,72 @@ export const updateEmpresa = async (id, empresaData) => {
 
 export const deleteEmpresa = async (id) => {
   try {
+    // Verificar si la empresa tiene productos asociados
+    const productos = await getProductosByEmpresa(id);
+    if (productos.length > 0) {
+      throw new Error('No se puede eliminar: la empresa tiene productos asociados');
+    }
+
+    // Verificar si tiene usuarios asociados (si aplica)
+    const q = query(collection(db, "usuarios"), where("empresaId", "==", id));
+    const usuariosSnapshot = await getDocs(q);
+    if (!usuariosSnapshot.empty) {
+      throw new Error('No se puede eliminar: la empresa tiene usuarios asociados');
+    }
+
+    // Si no hay dependencias, proceder con la eliminación
     await deleteDoc(doc(db, "empresas", id));
     return true;
   } catch (error) {
     console.error("Error deleting company:", error);
     throw error;
+  }
+};
+
+/**
+ * @param {string} empresaId 
+ * @returns {Promise<{hasDependencies: boolean, message?: string}>}
+ */
+export const checkEmpresaDependencies = async (empresaId) => {
+  try {
+    const [productos, usuarios] = await Promise.all([
+      getProductosByEmpresa(empresaId),
+      getDocs(query(collection(db, "usuarios"), where("empresaId", "==", empresaId)))
+    ]);
+
+    if (productos.length > 0 || !usuarios.empty) {
+      return {
+        hasDependencies: true,
+        message: 'La empresa tiene relaciones con otros datos'
+      };
+    }
+    return { hasDependencies: false };
+  } catch (error) {
+    console.error("Error checking company dependencies:", error);
+    throw error;
+  }
+};
+
+export const checkEmailExists = async (email) => {
+  try {
+    // Buscar en empresas
+    const qEmpresas = query(
+      collection(db, "empresas"), 
+      where("email", "==", email.trim().toLowerCase())
+    );
+    const empresaSnapshot = await getDocs(qEmpresas);
+    
+    // Buscar en usuarios normales
+    const qUsuarios = query(
+      collection(db, "usuarios"), 
+      where("email", "==", email.trim().toLowerCase())
+    );
+    const usuarioSnapshot = await getDocs(qUsuarios);
+    
+    return !empresaSnapshot.empty || !usuarioSnapshot.empty;
+  } catch (error) {
+    console.error("Error al verificar email:", error);
+    throw new Error("Error al verificar disponibilidad del email");
   }
 };
 
