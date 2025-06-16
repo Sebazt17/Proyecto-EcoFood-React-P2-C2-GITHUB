@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, Form } from 'react-bootstrap';
+import CerrarSesion from './CerrarSesion';  
 
 const ProductoModal = ({ show, onHide, producto, onSubmit, validations }) => {
   const [formData, setFormData] = useState({
@@ -38,8 +39,8 @@ const ProductoModal = ({ show, onHide, producto, onSubmit, validations }) => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     
-    // Validación en tiempo real
     let error = '';
+
     if (name === 'nombre') {
       const trimmed = value.trim();
       if (!trimmed) {
@@ -187,18 +188,19 @@ const ProductoModal = ({ show, onHide, producto, onSubmit, validations }) => {
             </Form.Group>
           </div>
         </Modal.Body>
+        
         <Modal.Footer>
-          <Button variant="secondary" onClick={onHide}>
-            Cancelar
-          </Button>
-          <Button 
-            variant="primary" 
-            type="submit"
-            disabled={Object.keys(errors).some(key => errors[key])}
-          >
-            {producto ? 'Guardar Cambios' : 'Agregar Producto'}
-          </Button>
-        </Modal.Footer>
+              <Button variant="secondary" onClick={onHide} className="me-2">
+                Cancelar
+              </Button>
+              <Button 
+                variant="primary" 
+                type="submit"
+                disabled={Object.keys(errors).some(key => errors[key])}
+              >
+                {producto ? 'Guardar Cambios' : 'Agregar Producto'}
+              </Button>
+            </Modal.Footer>
       </Form>
     </Modal>
   );
