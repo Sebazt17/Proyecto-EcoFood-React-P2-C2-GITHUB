@@ -15,10 +15,11 @@ import {
   createUserWithEmailAndPassword, 
   sendEmailVerification,
   signInWithEmailAndPassword,
-  signOut // Añade signOut si no lo tienes
+  signOut,
+  initializeAuth,
+  browserLocalPersistence
 } from "firebase/auth";
-import { db, secondaryAuth } from "./firebase"; // Importación correcta desde el mismo directorio
-
+import { db, app, secondaryAuth } from "./firebase";
 
 // Definición de tipos de usuario
 export const USER_TYPES = {
@@ -27,7 +28,7 @@ export const USER_TYPES = {
   EMPRESA: 'empresa'
 };
 
-// --- Funciones Base de Usuario ---
+// ==================== FUNCIONES BASE ====================
 
 /**
  * Guarda los datos de un usuario en Firestore
@@ -38,9 +39,7 @@ export const USER_TYPES = {
  */
 export const saveUserData = async (uid, data, type = USER_TYPES.CLIENTE) => {
   try {
-    // Determinar la colección según el tipo de usuario
     const collectionName = type === USER_TYPES.EMPRESA ? 'empresas' : 'usuarios';
-    
     await setDoc(doc(db, collectionName, uid), {
       ...data,
       tipo: type,
@@ -75,7 +74,40 @@ export const getUserData = async (uid) => {
   }
 };
 
-// Funciones CRUD para Clientes mejoradas
+/**
+ * Actualiza los datos de un usuario
+ * @param {string} userId - ID del usuario
+ * @param {object} newData - Nuevos datos a actualizar
+ * @returns {Promise<boolean>}
+ */
+export const updateUserData = async (userId, newData) => {
+  try {
+    // Primero intentamos actualizar en empresas
+    const empresaRef = doc(db, 'empresas', userId);
+    const empresaSnap = await getDoc(empresaRef);
+    
+    if (empresaSnap.exists()) {
+      await updateDoc(empresaRef, {
+        ...newData,
+        updatedAt: new Date().toISOString()
+      });
+      return true;
+    }
+
+    // Si no es empresa, intentamos actualizar en usuarios
+    const userRef = doc(db, 'usuarios', userId);
+    await updateDoc(userRef, {
+      ...newData,
+      updatedAt: new Date().toISOString()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error updating user data:', error);
+    throw error;
+  }
+};
+
+// ==================== FUNCIONES PARA CLIENTES ====================
 
 export const getClientes = async () => {
   try {
@@ -100,32 +132,23 @@ export const deleteCliente = async (id) => {
 
 export const registerClientWithAuth = async (email, password, userData) => {
   try {
-    // Verifica que secondaryAuth esté definido
     if (!secondaryAuth) {
       throw new Error("Error de configuración: secondaryAuth no está disponible");
     }
 
-    // Usamos la autenticación secundaria
     const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
-    
-    // Enviar verificación de email
     await sendEmailVerification(cred.user);
     
-    // Guardar en Firestore
     await saveUserData(cred.user.uid, {
       ...userData,
       email: email
     }, USER_TYPES.CLIENTE);
 
-    // Cerrar sesión en la instancia secundaria
     await signOut(secondaryAuth);
-    
     return cred.user;
-
   } catch (error) {
     console.error("Error en registro:", error);
     
-    // Mensaje más amigable para el usuario
     let errorMessage = "Error al registrar el cliente";
     if (error.code === "auth/email-already-in-use") {
       errorMessage = "El correo electrónico ya está en uso";
@@ -150,7 +173,7 @@ export const updateCliente = async (id, clientData) => {
   }
 };
 
-// --- Funciones CRUD para Administradores ---
+// ==================== FUNCIONES PARA ADMINISTRADORES ====================
 
 export const getAdministradores = async () => {
   try {
@@ -197,7 +220,7 @@ export const deleteAdministrador = async (id) => {
   }
 };
 
-// --- Funciones CRUD para Empresas ---
+// ==================== FUNCIONES PARA EMPRESAS ====================
 
 export const getEmpresas = async () => {
   try {
@@ -209,13 +232,6 @@ export const getEmpresas = async () => {
   }
 };
 
-/**
- * Registra una nueva empresa con autenticación
- * @param {string} email 
- * @param {string} password 
- * @param {object} empresaData 
- * @returns {Promise<object>}
- */
 export const registerEmpresaWithAuth = async (email, password, empresaData) => {
   try {
     const secondaryAuth = initializeAuth(app, {
@@ -230,7 +246,7 @@ export const registerEmpresaWithAuth = async (email, password, empresaData) => {
       email: email
     }, USER_TYPES.EMPRESA);
 
-    await secondaryAuth.signOut();
+    await signOut(secondaryAuth);
     return cred.user;
   } catch (error) {
     console.error("Error registering company with auth:", error);
@@ -240,7 +256,6 @@ export const registerEmpresaWithAuth = async (email, password, empresaData) => {
 
 export const addEmpresa = async (empresaData) => {
   try {
-    // Validaciones (puedes usar las mismas que en updateEmpresa)
     if (!empresaData.nombre?.trim()) {
       throw new Error('El nombre no puede estar vacío');
     }
@@ -253,7 +268,7 @@ export const addEmpresa = async (empresaData) => {
       ...empresaData,
       tipo: USER_TYPES.EMPRESA,
       fechaRegistro: new Date().toISOString(),
-      estado: 'activa' // Campo adicional para control
+      estado: 'activa'
     });
     
     return { id: docRef.id, ...empresaData };
@@ -265,17 +280,14 @@ export const addEmpresa = async (empresaData) => {
 
 export const updateEmpresa = async (id, empresaData) => {
   try {
-    // Validación de campos requeridos
     if (!empresaData.nombre || !empresaData.rut || !empresaData.email) {
       throw new Error('Nombre, RUT y email son campos requeridos');
     }
 
-    // Validación de formato de email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(empresaData.email)) {
       throw new Error('El formato del email no es válido');
     }
 
-    // Validación de RUT chileno (opcional)
     if (!/^[0-9]{7,8}-[0-9kK]{1}$/.test(empresaData.rut)) {
       throw new Error('El formato del RUT no es válido (ej: 12345678-5)');
     }
@@ -293,20 +305,17 @@ export const updateEmpresa = async (id, empresaData) => {
 
 export const deleteEmpresa = async (id) => {
   try {
-    // Verificar si la empresa tiene productos asociados
     const productos = await getProductosByEmpresa(id);
     if (productos.length > 0) {
       throw new Error('No se puede eliminar: la empresa tiene productos asociados');
     }
 
-    // Verificar si tiene usuarios asociados (si aplica)
     const q = query(collection(db, "usuarios"), where("empresaId", "==", id));
     const usuariosSnapshot = await getDocs(q);
     if (!usuariosSnapshot.empty) {
       throw new Error('No se puede eliminar: la empresa tiene usuarios asociados');
     }
 
-    // Si no hay dependencias, proceder con la eliminación
     await deleteDoc(doc(db, "empresas", id));
     return true;
   } catch (error) {
@@ -315,10 +324,6 @@ export const deleteEmpresa = async (id) => {
   }
 };
 
-/**
- * @param {string} empresaId 
- * @returns {Promise<{hasDependencies: boolean, message?: string}>}
- */
 export const checkEmpresaDependencies = async (empresaId) => {
   try {
     const [productos, usuarios] = await Promise.all([
@@ -339,16 +344,16 @@ export const checkEmpresaDependencies = async (empresaId) => {
   }
 };
 
+// ==================== FUNCIONES ADICIONALES ====================
+
 export const checkEmailExists = async (email) => {
   try {
-    // Buscar en empresas
     const qEmpresas = query(
       collection(db, "empresas"), 
       where("email", "==", email.trim().toLowerCase())
     );
     const empresaSnapshot = await getDocs(qEmpresas);
     
-    // Buscar en usuarios normales
     const qUsuarios = query(
       collection(db, "usuarios"), 
       where("email", "==", email.trim().toLowerCase())
@@ -362,13 +367,8 @@ export const checkEmailExists = async (email) => {
   }
 };
 
-// --- Funciones para Productos ---
+// ==================== FUNCIONES PARA PRODUCTOS ====================
 
-/**
- * Obtiene productos de una empresa específica
- * @param {string} empresaId 
- * @returns {Promise<Array>}
- */
 export const getProductosByEmpresa = async (empresaId) => {
   try {
     const q = query(
@@ -383,12 +383,6 @@ export const getProductosByEmpresa = async (empresaId) => {
   }
 };
 
-/**
- * Crea un nuevo producto para una empresa
- * @param {object} productoData 
- * @param {string} empresaId 
- * @returns {Promise<string>} ID del producto creado
- */
 export const createProducto = async (productoData, empresaId) => {
   try {
     const docRef = await addDoc(collection(db, "productos"), {
