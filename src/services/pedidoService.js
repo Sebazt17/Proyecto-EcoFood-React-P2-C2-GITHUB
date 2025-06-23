@@ -12,7 +12,6 @@ import { db } from './firebase';
 
 export const crearPedido = async (pedidoData) => {
   try {
-    // Obtener información adicional del producto
     const productoRef = doc(db, 'productos', pedidoData.productoId);
     const productoSnap = await getDoc(productoRef);
     
@@ -21,12 +20,11 @@ export const crearPedido = async (pedidoData) => {
     }
 
     const producto = productoSnap.data();
-    
+
     const pedidoCompleto = {
       ...pedidoData,
       productoNombre: producto.nombre,
-      empresaNombre: producto.empresaNombre,
-      fecha: new Date().toISOString(),
+      fecha: new Date().toISOString().split('T')[0],
       estado: 'pendiente'
     };
 

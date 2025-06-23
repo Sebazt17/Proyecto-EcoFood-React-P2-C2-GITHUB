@@ -1,12 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Badge, Card, Button } from 'react-bootstrap';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
 
 const MySwal = withReactContent(Swal);
 
 const ProductoCard = ({ producto, onEdit, onDelete, onSolicitar }) => {
   const [cantidad, setCantidad] = useState(1);
+  const [empresaNombre, setEmpresaNombre] = useState('Cargando...');
+
+  useEffect(() => {
+    const fetchEmpresaNombre = async () => {
+      if (producto.empresaId) {
+        try {
+          const docRef = doc(db, 'empresas', producto.empresaId);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            setEmpresaNombre(docSnap.data().nombre || 'Sin nombre');
+          } else {
+            setEmpresaNombre('No encontrada');
+          }
+        } catch (error) {
+          console.error('Error al obtener empresa:', error);
+          setEmpresaNombre('Error');
+        }
+      } else {
+        setEmpresaNombre('N/A');
+      }
+    };
+    fetchEmpresaNombre();
+  }, [producto.empresaId]);
 
   const getBadgeColor = () => {
     switch (producto.estado) {
@@ -33,7 +58,7 @@ const ProductoCard = ({ producto, onEdit, onDelete, onSolicitar }) => {
       MySwal.fire('Error', 'No hay suficiente stock disponible', 'error');
       return;
     }
-    
+
     MySwal.fire({
       title: 'Confirmar solicitud',
       html: `¿Solicitar <b>${cantidad}</b> unidad(es) de <b>${producto.nombre}</b>?`,
@@ -44,29 +69,13 @@ const ProductoCard = ({ producto, onEdit, onDelete, onSolicitar }) => {
     }).then((result) => {
       if (result.isConfirmed) {
         onSolicitar(cantidad);
-        MySwal.fire(
-          '¡Solicitud realizada!',
-          'Tu pedido ha sido registrado',
-          'success'
-        );
       }
     });
   };
 
-  const handleDeleteClick = () => {
-    MySwal.fire({
-      title: '¿Eliminar producto?',
-      text: `¿Estás seguro de eliminar ${producto.nombre}?`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Sí, eliminar',
-      cancelButtonText: 'Cancelar'
-    }).then((result) => {
-      if (result.isConfirmed) {
-        onDelete();
-      }
-    });
-  };
+  const vencimientoStr = producto.vencimiento?.toDate 
+    ? producto.vencimiento.toDate().toLocaleDateString() 
+    : 'No disponible';
 
   return (
     <Card className="h-100 shadow-sm">
@@ -79,10 +88,10 @@ const ProductoCard = ({ producto, onEdit, onDelete, onSolicitar }) => {
         </div>
         <Card.Text className="text-muted">{producto.descripcion}</Card.Text>
         <Card.Text>
-          <strong>Empresa:</strong> {producto.empresaNombre || 'N/A'}
+          <strong>Empresa:</strong> {empresaNombre}
         </Card.Text>
         <Card.Text>
-          <strong>Vencimiento:</strong> {new Date(producto.vencimiento).toLocaleDateString()}
+          <strong>Vencimiento:</strong> {vencimientoStr}
         </Card.Text>
         <Card.Text>
           <strong>Stock:</strong> {producto.cantidad} unidades
@@ -90,8 +99,7 @@ const ProductoCard = ({ producto, onEdit, onDelete, onSolicitar }) => {
         <Card.Text>
           <strong>Precio:</strong> {producto.precio === 0 ? 'Gratuito' : `$${producto.precio}`}
         </Card.Text>
-        
-        {/* Sección de solicitud (solo para clientes) */}
+
         {onSolicitar && (
           <div className="mt-3">
             <div className="d-flex align-items-center mb-2">
@@ -107,9 +115,9 @@ const ProductoCard = ({ producto, onEdit, onDelete, onSolicitar }) => {
                 style={{ width: '70px' }}
               />
             </div>
-            <Button 
-              variant="success" 
-              size="sm" 
+            <Button
+              variant="success"
+              size="sm"
               onClick={handleSolicitar}
               disabled={producto.cantidad <= 0}
               className="w-100"
@@ -119,8 +127,7 @@ const ProductoCard = ({ producto, onEdit, onDelete, onSolicitar }) => {
           </div>
         )}
       </Card.Body>
-      
-      {/* Footer con acciones (solo para empresas/admin) */}
+
       {(onEdit || onDelete) && (
         <Card.Footer className="bg-transparent">
           <div className="d-flex justify-content-between">
@@ -130,7 +137,7 @@ const ProductoCard = ({ producto, onEdit, onDelete, onSolicitar }) => {
               </Button>
             )}
             {onDelete && (
-              <Button variant="danger" size="sm" onClick={handleDeleteClick}>
+              <Button variant="danger" size="sm" onClick={() => onDelete()}>
                 Eliminar
               </Button>
             )}
