@@ -16,6 +16,8 @@ import MisPedidos from '../pages/cliente/MisPedidos';
 import EditarPerfil from '../pages/cliente/EditarPerfil';
 import PerfilEmpresa from '../pages/empresa/PerfilEmpresa';
 import ProductsEmpresa from '../pages/empresa/ProductsEmpresa';
+import SolicitudesEmpresa from '../pages/empresa/SolicitudesEmpresas';
+
 
 export default function AppRouter() {
   return (
@@ -69,6 +71,13 @@ export default function AppRouter() {
           <ProductsEmpresa />
         </ProtectedByRole>
       } />
+
+      <Route path="/empresa/solicitudes" element={
+        <ProtectedByRole allowedRoles={['empresa']}>
+          <SolicitudesEmpresa />
+        </ProtectedByRole>
+      } />
+
 
       {/* ========= RUTAS ADMIN ========= */}
       <Route path="/admin/dashboard" element={

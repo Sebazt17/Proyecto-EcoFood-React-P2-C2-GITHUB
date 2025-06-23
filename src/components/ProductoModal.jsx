@@ -38,44 +38,63 @@ const ProductoModal = ({ show, onHide, producto, onSubmit, validations }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    
     let error = '';
-
+    
+    // Validación para el campo nombre
     if (name === 'nombre') {
       const trimmed = value.trim();
       if (!trimmed) {
-        error = "Nombre es requerido";
-      } else if (trimmed.length < validations.nombre.minLength || 
-                 trimmed.length > validations.nombre.maxLength) {
-        error = validations.nombre.message;
+        error = validations.nombre.required;
+      } else if (trimmed.length < validations.nombre.minLength.value) {
+        error = validations.nombre.minLength.message;
+      } else if (trimmed.length > validations.nombre.maxLength.value) {
+        error = validations.nombre.maxLength.message;
+      } else if (validations.nombre.pattern && !validations.nombre.pattern.value.test(trimmed)) {
+        error = validations.nombre.pattern.message;
       }
-    } else if (name === 'descripcion') {
+    }
+    // Validación para el campo descripción
+    else if (name === 'descripcion') {
       const trimmed = value.trim();
       if (!trimmed) {
-        error = "Descripción es requerida";
-      } else if (trimmed.length < validations.descripcion.minLength || 
-                 trimmed.length > validations.descripcion.maxLength) {
-        error = validations.descripcion.message;
+        error = validations.descripcion.required;
+      } else if (trimmed.length < validations.descripcion.minLength.value) {
+        error = validations.descripcion.minLength.message;
+      } else if (trimmed.length > validations.descripcion.maxLength.value) {
+        error = validations.descripcion.maxLength.message;
       }
-    } else if (name === 'cantidad') {
+    }
+    // Validación para el campo cantidad
+    else if (name === 'cantidad') {
       const numValue = Number(value);
-      if (isNaN(numValue) || 
-          numValue < validations.cantidad.min || 
-          numValue > validations.cantidad.max) {
-        error = validations.cantidad.message;
+      if (isNaN(numValue)) {
+        error = "Debe ser un número";
+      } else if (numValue < validations.cantidad.min.value) {
+        error = validations.cantidad.min.message;
+      } else if (numValue > validations.cantidad.max.value) {
+        error = validations.cantidad.max.message;
       }
-    } else if (name === 'precio') {
+    }
+    // Validación para el campo precio
+    else if (name === 'precio') {
       const numValue = Number(value);
-      if (isNaN(numValue) || 
-          numValue < validations.precio.min || 
-          numValue > validations.precio.max) {
-        error = validations.precio.message;
+      if (isNaN(numValue)) {
+        error = "Debe ser un número";
+      } else if (numValue < validations.precio.min.value) {
+        error = validations.precio.min.message;
+      } else if (numValue > validations.precio.max.value) {
+        error = validations.precio.max.message;
+      } else if (validations.precio.pattern && !validations.precio.pattern.value.test(value)) {
+        error = validations.precio.pattern.message;
       }
-    } else if (name === 'vencimiento' && value) {
+    }
+    // Validación para el campo vencimiento
+    else if (name === 'vencimiento' && value) {
       const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
       const vencimiento = new Date(value);
       if (vencimiento < hoy) {
-        error = "La fecha no puede ser anterior a hoy";
+        error = validations.vencimiento.validate(value);
       }
     }
 
@@ -92,7 +111,65 @@ const ProductoModal = ({ show, onHide, producto, onSubmit, validations }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(formData);
+    
+    // Validación final antes de enviar
+    const finalErrors = {};
+    Object.keys(formData).forEach(key => {
+      if (validations[key]) {
+        const error = validateField(key, formData[key]);
+        if (error) finalErrors[key] = error;
+      }
+    });
+    
+    if (Object.keys(finalErrors).length === 0) {
+      onSubmit(formData);
+    } else {
+      setErrors(finalErrors);
+    }
+  };
+
+  const validateField = (name, value) => {
+    if (!validations[name]) return null;
+    
+    const rules = validations[name];
+    
+    // Validación de campo requerido
+    if (rules.required && !value.trim()) {
+      return rules.required;
+    }
+    
+    // Validación de longitud mínima
+    if (rules.minLength && value.length < rules.minLength.value) {
+      return rules.minLength.message;
+    }
+    
+    // Validación de longitud máxima
+    if (rules.maxLength && value.length > rules.maxLength.value) {
+      return rules.maxLength.message;
+    }
+    
+    // Validación de patrón (regex)
+    if (rules.pattern && !rules.pattern.value.test(value)) {
+      return rules.pattern.message;
+    }
+    
+    // Validación de valor mínimo
+    if (rules.min && Number(value) < rules.min.value) {
+      return rules.min.message;
+    }
+    
+    // Validación de valor máximo
+    if (rules.max && Number(value) > rules.max.value) {
+      return rules.max.message;
+    }
+    
+    // Validación personalizada
+    if (rules.validate) {
+      const customError = rules.validate(value);
+      if (typeof customError === 'string') return customError;
+    }
+    
+    return null;
   };
 
   return (
@@ -110,13 +187,13 @@ const ProductoModal = ({ show, onHide, producto, onSubmit, validations }) => {
               value={formData.nombre}
               onChange={handleChange}
               isInvalid={!!errors.nombre}
-              maxLength={validations.nombre.maxLength}
+              maxLength={validations?.nombre?.maxLength?.value || 50}
             />
             <Form.Control.Feedback type="invalid">
               {errors.nombre}
             </Form.Control.Feedback>
             <Form.Text className="text-muted">
-              {formData.nombre.trim().length}/{validations.nombre.maxLength} caracteres
+              {formData.nombre.length}/{validations?.nombre?.maxLength?.value || 50} caracteres
             </Form.Text>
           </Form.Group>
 
@@ -129,13 +206,13 @@ const ProductoModal = ({ show, onHide, producto, onSubmit, validations }) => {
               value={formData.descripcion}
               onChange={handleChange}
               isInvalid={!!errors.descripcion}
-              maxLength={validations.descripcion.maxLength}
+              maxLength={validations?.descripcion?.maxLength?.value}
             />
             <Form.Control.Feedback type="invalid">
               {errors.descripcion}
             </Form.Control.Feedback>
             <Form.Text className="text-muted">
-              {formData.descripcion.trim().length}/{validations.descripcion.maxLength} caracteres
+              {formData.descripcion.length}/{validations?.descripcion?.maxLength?.value} caracteres
             </Form.Text>
           </Form.Group>
 
@@ -162,8 +239,8 @@ const ProductoModal = ({ show, onHide, producto, onSubmit, validations }) => {
                 value={formData.cantidad}
                 onChange={handleChange}
                 isInvalid={!!errors.cantidad}
-                min={validations.cantidad.min}
-                max={validations.cantidad.max}
+                min={validations?.cantidad?.min?.value || 0}
+                max={validations?.cantidad?.max?.value || 10000}
               />
               <Form.Control.Feedback type="invalid">
                 {errors.cantidad}
@@ -178,8 +255,8 @@ const ProductoModal = ({ show, onHide, producto, onSubmit, validations }) => {
                 value={formData.precio}
                 onChange={handleChange}
                 isInvalid={!!errors.precio}
-                min={validations.precio.min}
-                max={validations.precio.max}
+                min={validations?.precio?.min?.value || 0}
+                max={validations?.precio?.max?.value || 1000000}
                 step="0.01"
               />
               <Form.Control.Feedback type="invalid">
@@ -190,17 +267,17 @@ const ProductoModal = ({ show, onHide, producto, onSubmit, validations }) => {
         </Modal.Body>
         
         <Modal.Footer>
-              <Button variant="secondary" onClick={onHide} className="me-2">
-                Cancelar
-              </Button>
-              <Button 
-                variant="primary" 
-                type="submit"
-                disabled={Object.keys(errors).some(key => errors[key])}
-              >
-                {producto ? 'Guardar Cambios' : 'Agregar Producto'}
-              </Button>
-            </Modal.Footer>
+          <Button variant="secondary" onClick={onHide} className="me-2">
+            Cancelar
+          </Button>
+          <Button 
+            variant="primary" 
+            type="submit"
+            disabled={Object.values(errors).some(error => error)}
+          >
+            {producto ? 'Guardar Cambios' : 'Agregar Producto'}
+          </Button>
+        </Modal.Footer>
       </Form>
     </Modal>
   );
